@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Irish Local Planning Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; }
+        header { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h1 { margin-top: 0; color: #1e3a8a; }
+        .selector-box { display: flex; flex-wrap: wrap; gap: 10px; margin: 15px 0; }
+        .chip { padding: 8px 14px; background: #e5e7eb; border-radius: 20px; cursor: pointer; user-select: none; font-weight: 500; font-size: 14px; }
+        .chip.selected { background: #2563eb; color: white; }
+        .filter-container { display: flex; flex-wrap: wrap; gap: 15px; margin: 15px 0; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .filter-field { display: flex; flex-direction: column; font-size: 14px; font-weight: bold; color: #475569; min-width: 150px; flex: 1; }
+        .filter-field input, .filter-field select { margin-top: 5px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: inherit; font-size: 14px; background: white; }
+        button { background: #10b981; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        button:hover { background: #059669; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; position: relative; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 15px; }
+        .card-title { display: flex; flex-direction: column; gap: 4px; }
+        .ref-num { font-weight: bold; color: #2563eb; font-size: 15px; line-height: 1.4; }
+        .address-title { font-weight: 600; color: #1e293b; font-size: 15px; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; background: #f3f4f6; margin-left: 5px; white-space: nowrap; }
+        .badge.commercial { background: #fef3c7; color: #d97706; }
+        .badge.residential { background: #d1fae5; color: #065f46; }
+        .badge.status { background: #e0f2fe; color: #0369a1; }
+        .county-tag { background: #e2e8f0; color: #334155; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
+        .desc { font-size: 14px; line-height: 1.5; color: #4b5563; margin-bottom: 15px; }
+        .action-links { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .view-link { color: #2563eb; font-weight: 600; text-decoration: none; font-size: 14px; }
+        .view-link:hover { text-decoration: underline; }
+        .map-link { color: #059669; font-weight: 600; text-decoration: none; font-size: 14px; }
+        .map-link:hover { text-decoration: underline; }
+        .arcgis-link { color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 14px; }
+        .arcgis-link:hover { text-decoration: underline; }
+        #status-msg { text-align: center; font-weight: bold; color: #4b5563; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Irish Local Planning Dashboard</h1>
+            <p>Select your local county councils. Your selections are automatically remembered on this computer.</p>
+            
+            <div class="selector-box" id="council-list"></div>
+
+            <div class="filter-container">
+                <div class="filter-field">
+                    <label for="filter-type">Application Status:</label>
+                    <select id="filter-type">
+                        <option value="all">All Applications Received</option>
+                        <option value="granted">Decision: Granted Only</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label for="address-keyword">Address Keyword:</label>
+                    <input type="text" id="address-keyword" placeholder="e.g. Main St, Ballina">
+                </div>
+                <div class="filter-field">
+                    <label for="start-date">From Date:</label>
+                    <input type="date" id="start-date">
+                </div>
+                <div class="filter-field">
+                    <label for="end-date">To Date (Optional):</label>
+                    <input type="date" id="end-date">
+                </div>
+            </div>
+
+            <button onclick="loadPlanningData()">Update Dashboard Feed</button>
+        </header>
+
+        <div id="status-msg"></div>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const councils = [
+            "Carlow", "Cavan", "Clare", "Cork", "Cork City", "Donegal", "Dublin City", 
+            "Dun Laoghaire Rathdown", "Fingal", "Galway", "Galway City", "Kerry", "Kildare", 
+            "Kilkenny", "Laois", "Leitrim", "Limerick", "Longford", "Louth", "Mayo", "Meath", 
+            "Monaghan", "Offaly", "Roscommon", "Sligo", "South Dublin", "Tipperary", "Waterford", 
+            "Westmeath", "Wexford", "Wicklow"
+        ];
+
+        let selectedCounties = JSON.parse(localStorage.getItem('myCouncils')) || [];
+
+        const listDiv = document.getElementById('council-list');
+        councils.forEach(county => {
+            const chip = document.createElement('div');
+            chip.className = `chip ${selectedCounties.includes(county) ? 'selected' : ''}`;
+            chip.innerText = county;
+            chip.onclick = () => {
+                if (selectedCounties.includes(county)) {
+                    selectedCounties = selectedCounties.filter(c => c !== county);
+                    chip.classList.remove('selected');
+                } else {
+                    selectedCounties.push(county);
+                    chip.classList.add('selected');
+                }
+                localStorage.setItem('myCouncils', JSON.stringify(selectedCounties));
+            };
+            listDiv.appendChild(chip);
+        });
+
+        async function loadPlanningData() {
+            if(selectedCounties.length === 0) {
+                alert("Please select at least one council first!");
+                return;
+            }
+            
+            const statusDiv = document.getElementById('status-msg');
+            const resultsDiv = document.getElementById('results');
+            
+            const filterType = document.getElementById('filter-type').value;
+            const addressKeyword = document.getElementById('address-keyword').value.trim().toLowerCase();
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+
+            statusDiv.innerText = "Querying live database... this takes a few seconds.";
+            resultsDiv.innerHTML = "";
+
+            try {
+                const response = await fetch('/get-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        counties: selectedCounties,
+                        filter_type: filterType,
+                        start_date: startDate,
+                        end_date: endDate
+                    })
+                });
+                
+                const applications = await response.json();
+
+                const filteredApps = applications.filter(app => {
+                    if (!addressKeyword) return true;
+                    return app.address.toLowerCase().includes(addressKeyword);
+                });
+
+                statusDiv.innerText = `Found ${filteredApps.length} matching applications.`;
+                
+                if(filteredApps.length === 0) return;
+
+                filteredApps.forEach(app => {
+                    const isComm = app.desc.toLowerCase().includes('shop') || 
+                                   app.desc.toLowerCase().includes('retail') || 
+                                   app.desc.toLowerCase().includes('commercial') || 
+                                   app.desc.toLowerCase().includes('office') ||
+                                   app.desc.toLowerCase().includes('unit');
+                    
+                    const badgeClass = isComm ? 'badge commercial' : 'badge residential';
+                    const badgeText = isComm ? 'Commercial Intent' : 'Residential / Extension';
+                    
+                    const statusBadge = app.decision.toLowerCase().includes('grant') || 
+                                        app.decision.toLowerCase().includes('conditional') || 
+                                        app.decision.toLowerCase().includes('approved') ? 
+                        `<span class="badge status" style="background:#d1fae5; color:#065f46; border:1px solid #10b981;">✓ GRANTED</span>` : '';
+
+                    const mapLinkHTML = app.map_link ? `<a href="${app.map_link}" target="_blank" class="map-link">View Google Map 📍</a>` : '';
+                    const arcgisLinkHTML = app.arcgis_link ? `<a href="${app.arcgis_link}" target="_blank" class="arcgis-link">ArcGIS Viewer 🗺️</a>` : '';
+
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <div class="card-title">
+                                <span class="ref-num">Ref: ${app.ref}</span>
+                                <span class="address-title">${app.address}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; min-width: max-content;">
+                                <span class="county-tag">Co. ${app.county}</span>
+                                <span class="${badgeClass}">${badgeText}</span>
+                                ${statusBadge}
+                            </div>
+                        </div>
+                        <div style="font-size: 12px; margin-bottom: 8px; color:#9ca3af;">Date: <b>${app.date}</b></div>
+                        <div class="desc">${app.desc}</div>
+                        <div class="action-links">
+                            <a href="${app.link}" target="_blank" class="view-link">View Official Files & Applicant Info &rarr;</a>
+                            ${mapLinkHTML}
+                            ${arcgisLinkHTML}
+                        </div>
+                    `;
+                    resultsDiv.appendChild(card);
+                });
+
+            } catch (err) {
+                statusDiv.innerText = "Error pulling data. Make sure your Python terminal backend is running.";
+                console.error(err);
+            }
+        }
+
+        if(selectedCounties.length > 0) {
+            loadPlanningData();
+        }
+    </script>
+</body>
+</html>
