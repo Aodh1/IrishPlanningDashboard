@@ -10,7 +10,7 @@ PORT = 8000
 BASE_URL = "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/IrishPlanningApplications/FeatureServer/0/query"
 
 # Paste your copied full URL from DevTools here
-CORK_CITY_API_URL = https://planningapi.agileapplications.ie/api/application/search?query=Bishopstown
+CORK_CITY_API_URL = "https://planningapi.agileapplications.ie/api/application/search?query=Bishopstown"
 
 
 def fetch_cork_city_agile_data(start_date_str=None, end_date_str=None, filter_type="all"):
