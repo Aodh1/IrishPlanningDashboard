@@ -14,9 +14,21 @@ def fetch_planning_data(counties, filter_type="all", start_date_str=None, end_da
     if not counties:
         return []
 
-    sub_clauses = [
-        f"UPPER(PlanningAuthority) LIKE '%{c.upper().strip()}%'" for c in counties
-    ]
+    sub_clauses = []
+    for c in counties:
+        clean_c = c.strip()
+        if clean_c.lower() == "cork city":
+            sub_clauses.append("UPPER(PlanningAuthority) LIKE '%CORK CITY%'")
+        elif clean_c.lower() == "cork":
+            # Target Cork County while avoiding Cork City
+            sub_clauses.append("(UPPER(PlanningAuthority) LIKE '%CORK%' AND UPPER(PlanningAuthority) NOT LIKE '%CORK CITY%')")
+        elif clean_c.lower() == "galway city":
+            sub_clauses.append("UPPER(PlanningAuthority) LIKE '%GALWAY CITY%'")
+        elif clean_c.lower() == "galway":
+            sub_clauses.append("(UPPER(PlanningAuthority) LIKE '%GALWAY%' AND UPPER(PlanningAuthority) NOT LIKE '%GALWAY CITY%')")
+        else:
+            sub_clauses.append(f"UPPER(PlanningAuthority) LIKE '%{clean_c.upper()}%'")
+
     where_clause = " OR ".join(sub_clauses)
 
     active_date_field = "DecisionDate" if filter_type == "granted" else "ReceivedDate"
@@ -147,11 +159,16 @@ class LocalPlanningServer(http.server.SimpleHTTPRequestHandler):
             super().do_POST()
 
 
-if __name__ == "__main__":
-    print(f"Starting your local dashboard at http://localhost:{PORT}")
-    webbrowser.open(f"http://localhost:{PORT}")
+import os
 
-    with socketserver.TCPServer(("", PORT), LocalPlanningServer) as httpd:
+# Use PORT assigned by the hosting environment, or default to 8000
+PORT = int(os.environ.get("PORT", 8000))
+
+if __name__ == "__main__":
+    print(f"Starting server on port {PORT}...")
+    
+    # Bind to 0.0.0.0 so external internet traffic can reach the app
+    with socketserver.TCPServer(("0.0.0.0", PORT), LocalPlanningServer) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
