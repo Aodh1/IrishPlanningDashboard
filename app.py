@@ -11,7 +11,7 @@ PORT = int(os.environ.get("PORT", 8000))
 BASE_URL = "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/IrishPlanningApplications/FeatureServer/0/query"
 
 # Cork City Agile API Endpoint
-CORK_CITY_API_URL = "https://planningapi.agileapplications.ie/api/application/search?query=Bishopstown"
+CORK_CITY_API_URL = "https://planningapi.agileapplications.ie/api/application/search?openApplications=false"
 
 
 def fetch_cork_city_agile_data(start_date_str=None, end_date_str=None, filter_type="all"):
@@ -26,28 +26,34 @@ def fetch_cork_city_agile_data(start_date_str=None, end_date_str=None, filter_ty
         response.raise_for_status()
         records = response.json()
 
+        # Handle various response wrapper keys
         if isinstance(records, dict):
-            records = records.get("results") or records.get("data") or records.get("items") or []
+            records = (
+                records.get("results")
+                or records.get("data")
+                or records.get("items")
+                or records.get("applications")
+                or []
+            )
 
         results = []
         for item in records:
+            # Extract basic application properties safely
             ref = item.get("applicationNumber") or item.get("reference") or item.get("id") or "N/A"
             address = item.get("address") or item.get("location") or item.get("siteAddress") or "No Address Provided"
             desc = item.get("proposal") or item.get("description") or item.get("developmentDescription") or "No description provided."
             decision = item.get("decision") or item.get("status") or "N/A"
-            
-            # Extract applicant name if present
             applicant = item.get("applicantName") or item.get("applicant") or "Unknown Applicant"
 
-            date_raw = item.get("decisionDate") if filter_type == "granted" else (item.get("receivedDate") or item.get("registeredDate"))
+            date_raw = item.get("decisionDate") if filter_type == "granted" else (item.get("receivedDate") or item.get("registeredDate") or item.get("dateReceived"))
 
-            # Decision filtering
+            # Decision filter
             decision_text = str(decision).upper()
             is_granted = "GRANT" in decision_text or "APPROVED" in decision_text or "CONDITIONAL" in decision_text
             if filter_type == "granted" and not is_granted:
                 continue
 
-            # Parse date string
+            # Date formatting
             formatted_date = "N/A"
             if date_raw:
                 try:
@@ -58,7 +64,6 @@ def fetch_cork_city_agile_data(start_date_str=None, end_date_str=None, filter_ty
                 except ValueError:
                     formatted_date = str(date_raw)
 
-            # Map links
             search_query = f"{address}, Cork City, Ireland"
             map_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(search_query)}"
 
