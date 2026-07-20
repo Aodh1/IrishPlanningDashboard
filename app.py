@@ -9,6 +9,73 @@ import requests
 PORT = 8000
 BASE_URL = "https://services.arcgis.com/NzlPQPKn5QF9v2US/arcgis/rest/services/IrishPlanningApplications/FeatureServer/0/query"
 
+# Paste your copied full URL from DevTools here
+CORK_CITY_API_URL = https://planningapi.agileapplications.ie/api/application/search?
+
+
+def fetch_cork_city_agile_data(start_date_str=None, end_date_str=None, filter_type="all"):
+    """Fetches Cork City planning data directly from the new Agile Applications API."""
+    if CORK_CITY_API_URL == "PASTE_YOUR_FULL_CORK_CITY_REQUEST_URL_HERE":
+        print("Warning: CORK_CITY_API_URL is not set.")
+        return []
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "application/json, text/plain, */*",
+    }
+
+    try:
+        response = requests.get(CORK_CITY_API_URL, headers=headers, timeout=15)
+        response.raise_for_status()
+        records = response.json()
+
+        # Handle cases where response is wrapped in a dict (e.g., {"results": [...]})
+        if isinstance(records, dict):
+            records = records.get("results") or records.get("data") or records.get("items") or []
+
+        results = []
+        for item in records:
+            # Common key field mapping for Agile Applications API
+            ref = item.get("applicationNumber") or item.get("reference") or item.get("id") or "N/A"
+            address = item.get("address") or item.get("location") or item.get("siteAddress") or "Location Not Specified"
+            desc = item.get("proposal") or item.get("description") or item.get("developmentDescription") or "No description provided."
+            decision = item.get("decision") or item.get("status") or "N/A"
+            date_raw = item.get("decisionDate") if filter_type == "granted" else item.get("receivedDate") or item.get("registeredDate")
+
+            # Status filtering
+            decision_text = str(decision).upper()
+            is_granted = "GRANT" in decision_text or "APPROVED" in decision_text or "CONDITIONAL" in decision_text
+            if filter_type == "granted" and not is_granted:
+                continue
+
+            # Parse date string
+            formatted_date = "N/A"
+            if date_raw:
+                try:
+                    # Clean ISO date format if returned like '2026-05-08T00:00:00'
+                    dt_obj = datetime.fromisoformat(str(date_raw).replace("Z", ""))
+                    formatted_date = dt_obj.strftime("%d-%m-%Y")
+                    if filter_type == "granted":
+                        formatted_date += " (Decision Date)"
+                except ValueError:
+                    formatted_date = str(date_raw)
+
+            results.append(
+                {
+                    "ref": ref,
+                    "address": str(address).title(),
+                    "county": "Cork City",
+                    "desc": desc,
+                    "date": formatted_date,
+                    "link": f"https://www.corkcity.ie/en/council-services/services/planning/search-for-a-planning-application/",
+                    "decision": decision,
+                }
+            )
+        return results
+    except Exception as e:
+        print(f"Error querying Cork City Agile API: {e}")
+        return []
+
 
 def fetch_planning_data(counties, filter_type="all", start_date_str=None, end_date_str=None):
     if not counties:
